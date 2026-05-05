@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rule Editor</title>
+<style>
+  body { background:#111; color:#eee; font-family:Arial; }
+  .wrap { max-width: 900px; margin: 30px auto; }
+  h2 { color:#0f8; }
+  label { display:block; margin-top:10px; }
+  select, input[type=number], input[type=text] { padding:6px; border:1px solid #444; background:#222; color:#eee; }
+  table { width:100%; border-collapse:collapse; margin-top:20px; }
+  th, td { border:1px solid #555; padding:8px; text-align:center; }
+  button { padding:6px 10px; margin:6px 0; cursor:pointer; }
+  .row { display:flex; gap:16px; align-items:center; flex-wrap: wrap; }
+  .hidden { display:none; }
+  .error { color:#f77; margin-top:6px; }
+  .pill { display:inline-block; padding:4px 8px; border:1px solid #555; border-radius:12px; margin-right:6px; background:#1b1b1b; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h2>Rule Editor</h2>
+
+  <div class="row">
+    <div>
+      <label>Zone</label>
+      <select id="zone">
+        <option value="ANY">ANY</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Rule Type</label>
+      <select id="rtype" onchange="syncFields()">
+        <option value="count_gt">count_gt (objects > N)</option>
+        <option value="posture_eq">posture_eq (equals)</option>
+        <option value="posture_in">posture_in (any of)</option>
+      </select>
+    </div>
+
+    <div id="countWrap">
+      <label>Param (N)</label>
+      <input id="countParam" type="number" min="0" step="1" value="1">
+    </div>
+
+    <div id="postureEqWrap" class="hidden">
+      <label>Posture (equals)</label>
+      <select id="postureEq">
+        <option value="">-- choose --</option>
+        <option>standing</option>
+        <option>sitting</option>
+        <option>walking</option>
+        <option>running</option>
+        <option>lying_down</option>
+        <option>falling</option>
+        <option>unknown</option>
+      </select>
+    </div>
+
+    <div id="postureInWrap" class="hidden">
+      <label>Postures (any of)</label>
+      <div id="postureChecks">
+        <label class="pill"><input type="checkbox" value="standing"> standing</label>
+        <label class="pill"><input type="checkbox" value="sitting"> sitting</label>
+        <label class="pill"><input type="checkbox" value="walking"> walking</label>
+        <label class="pill"><input type="checkbox" value="running"> running</label>
+        <label class="pill"><input type="checkbox" value="lying_down"> lying_down</label>
+        <label class="pill"><input type="checkbox" value="falling"> falling</label>
+        <label class="pill"><input type="checkbox" value="unknown"> unknown</label>
+      </div>
+    </div>
+
+    <div id="minSecWrap" class="hidden">
+      <label>Min Seconds in posture</label>
+      <input id="minSeconds" type="number" min="0" step="0.1" value="2.0">
+    </div>
+
+    <div>
+      <label>Action</label>
+      <select id="action">
+        <option>alert</option>
+        <option>record</option>
+        <option>both</option>
+      </select>
+    </div>
+
+  </div>
+
+  <div class="error" id="err"></div>
+  <button onclick="addRule()">Add Rule</button>
+  <button onclick="saveRules()">Save All</button>
+
+  <h3>Current Rules</h3>
+  <table id="tbl">
+    <thead>
+      <tr><th>#</th><th>Zone</th><th>Type</th><th>Param</th><th>min_seconds</th><th>Action</th><th>Delete</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+let rules = [];
+
+function $(id){ return document.getElementById(id); }
+
+function syncFields(){
+  const t = $("rtype").value;
+  $("countWrap").classList.add("hidden");
+  $("postureEqWrap").classList.add("hidden");
+  $("postureInWrap").classList.add("hidden");
+  $("minSecWrap").classList.add("hidden");
+
+  if (t === "count_gt"){
+    $("countWrap").classList.remove("hidden");
+  } else if (t === "posture_eq"){
+    $("postureEqWrap").classList.remove("hidden");
+    $("minSecWrap").classList.remove("hidden");
+  } else if (t === "posture_in"){
+    $("postureInWrap").classList.remove("hidden");
+    $("minSecWrap").classList.remove("hidden");
+  }
+}
+
+function validateNewRule(){
+  const err = $("err");
+  err.textContent = "";
+  const zone = $("zone").value;
+  const rtype = $("rtype").value;
+  const action = $("action").value;
+
+  if (rtype === "count_gt"){
+    const n = parseInt($("countParam").value, 10);
+    if (isNaN(n) || n < 0){
+      err.textContent = "Param must be a non-negative integer for count_gt.";
+      return null;
+    }
+    return { zone, type: rtype, param: n, action };
+  }
+
+  if (rtype === "posture_eq"){
+    const p = $("postureEq").value.trim();
+    const ms = parseFloat($("minSeconds").value);
+    if (!p){
+      err.textContent = "Choose a posture for posture_eq.";
+      return null;
+    }
+    if (isNaN(ms) || ms < 0){
+      err.textContent = "min_seconds must be >= 0 for posture rules.";
+      return null;
+    }
+    return { zone, type: rtype, param: p, min_seconds: ms, action };
+  }
+
+  if (rtype === "posture_in"){
+    const boxes = Array.from(document.querySelectorAll("#postureChecks input[type=checkbox]:checked"))
+                       .map(x => x.value);
+    const ms = parseFloat($("minSeconds").value);
+    if (boxes.length === 0){
+      $("err").textContent = "Select at least one posture for posture_in.";
+      return null;
+    }
+    if (isNaN(ms) || ms < 0){
+      err.textContent = "min_seconds must be >= 0 for posture rules.";
+      return null;
+    }
+    return { zone, type: rtype, param: boxes, min_seconds: ms, action };
+  }
+
+  err.textContent = "Unknown rule type.";
+  return null;
+}
+
+function addRule(){
+  const r = validateNewRule();
+  if (!r) return;
+  rules.push(r);
+  render();
+}
+
+function render(){
+  const tbody = document.querySelector("#tbl tbody");
+  tbody.innerHTML = "";
+  rules.forEach((r, i) => {
+    const tr = document.createElement("tr");
+    const paramText = Array.isArray(r.param) ? r.param.join(",") : r.param;
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td>${r.zone}</td>
+      <td>${r.type}</td>
+      <td>${paramText ?? ""}</td>
+      <td>${r.min_seconds ?? ""}</td>
+      <td>${r.action}</td>
+      <td><button onclick="delRule(${i})">Delete</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function delRule(i){
+  rules.splice(i, 1);
+  render();
+}
+
+async function loadZones(){
+  try {
+    const res = await fetch("/api/zones");
+    const z = await res.json();
+    const sel = $("zone");
+    sel.innerHTML = `<option value="ANY">ANY</option>`;
+    z.forEach(one => {
+      const opt = document.createElement("option");
+      opt.value = one.name;
+      opt.textContent = one.name;
+      sel.appendChild(opt);
+    });
+  } catch(e) { console.log("zones load fail", e); }
+}
+
+async function loadRules(){
+  try {
+    const res = await fetch("/api/rules");
+    rules = await res.json();
+    render();
+  } catch(e) { console.log("rules load fail", e); }
+}
+
+async function saveRules(){
+  const res = await fetch("/api/rules", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(rules)
+  });
+  if (res.ok) alert("Rules saved!");
+  else alert("Save failed.");
+}
+
+loadZones();
+loadRules();
+syncFields();
+</script>
+</body>
+</html>
