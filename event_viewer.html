@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Event Viewer</title>
+<style>
+  body { background:#111; color:#eee; font-family:Arial; text-align:center; }
+  table { margin:auto; border-collapse:collapse; width: 90%; }
+  th, td { border:1px solid #555; padding:6px 10px; text-align:center; }
+  button { padding:4px 10px; margin:2px; cursor:pointer; }
+  video { width:320px; height:240px; margin-top:10px; display:none; }
+  #controls { margin-bottom: 15px; }
+</style>
+</head>
+<body>
+<h2>Event Viewer</h2>
+
+<div id="controls">
+  <button onclick="clearAllEvents()" style="background:#900; color:white;">Clear All Events</button>
+</div>
+
+<table id="tbl">
+  <thead>
+    <tr><th>Time</th><th>Zone</th><th>Rule</th><th>Action</th><th>Clip</th><th>Delete</th></tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<video id="player" controls></video>
+
+<script>
+async function loadEvents(){
+  const res = await fetch("/api/events");
+  const events = await res.json();
+  const tbody = document.querySelector("#tbl tbody");
+  tbody.innerHTML = "";
+
+  events.forEach((e, index) => {
+    let clipCell = "";
+
+    if (e.clip && e.clip !== "(deleted)") {
+      clipCell = `
+        <button onclick="playClip('${e.clip}')">Play</button>
+        <button onclick="exportClip('${e.clip}')">Export</button>
+      `;
+    } else if (e.clip === "(deleted)") {
+      clipCell = `<span style="color:#888">(deleted)</span>`;
+    }
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${e.time}</td>
+      <td>${e.zone}</td>
+      <td>${e.rule}</td>
+      <td>${e.action}</td>
+      <td>${clipCell}</td>
+      <td><button onclick="deleteEvent(${index})" style="background:#600;color:white;">Delete</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ---- Play Clip ----
+function playClip(name){
+  const player = document.getElementById("player");
+  player.style.display = "block";
+  player.src = "/media/" + name + "?t=" + Date.now(); // prevents caching
+  player.load();
+  player.play();
+}
+
+// ---- Export Clip ----
+function exportClip(name){
+  const a = document.createElement("a");
+  a.href = "/media/" + name;
+  a.download = name;
+  a.click();
+}
+
+// ---- Delete Single Event ----
+async function deleteEvent(index){
+  if (!confirm("Delete this event?")) return;
+  await fetch("/api/events/delete/" + index, { method: "DELETE" });
+  loadEvents();
+}
+
+// ---- Clear All Events ----
+async function clearAllEvents(){
+  if (!confirm("This will permanently delete ALL events. Continue?")) return;
+  await fetch("/api/events/clear", { method: "DELETE" });
+  loadEvents();
+}
+
+// Auto-refresh every 5 seconds
+loadEvents();
+setInterval(loadEvents, 5000);
+</script>
+</body>
+</html>

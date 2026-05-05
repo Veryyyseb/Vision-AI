@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tracking System Dashboard</title>
+  <style>
+    :root {
+      --bg: #0f1113;
+      --panel: #1a1f24;
+      --text: #e8edf2;
+      --muted: #9cadbc;
+      --accent: #10b981;
+      --line: #2f3945;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Segoe UI, Tahoma, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 20px;
+    }
+
+    header h1 {
+      margin: 0;
+      color: var(--accent);
+      font-size: 32px;
+    }
+
+    header p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .nav-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 20px;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .card:hover {
+      border-color: var(--accent);
+      background: #232d36;
+      transform: translateY(-2px);
+    }
+
+    .card h2 {
+      margin: 0;
+      font-size: 18px;
+      color: var(--accent);
+    }
+
+    .card p {
+      margin: 0;
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .card-icon {
+      font-size: 32px;
+      opacity: 0.6;
+    }
+
+    .info-box {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 20px;
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent);
+      font-size: 12px;
+      margin-top: 10px;
+    }
+
+    .status.checking {
+      background: rgba(245, 158, 11, 0.15);
+      color: #f59e0b;
+    }
+
+    .status.error {
+      background: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+    }
+
+    @media (max-width: 600px) {
+      header h1 { font-size: 24px; }
+      .nav-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📊 Tracking System Dashboard</h1>
+      <p>Manage zones, rules, events, and system configuration</p>
+      <div class="status" id="health-status">Loading...</div>
+    </header>
+
+    <div class="nav-grid">
+      <a href="zone_editor.html" class="card">
+        <div>
+          <span class="card-icon">🗺️</span>
+          <h2>Zone Editor</h2>
+        </div>
+        <p>Define and manage detection zones on your camera feed. Draw polygons, select, and organize areas of interest.</p>
+      </a>
+
+      <a href="rule_editor.html" class="card">
+        <div>
+          <span class="card-icon">⚙️</span>
+          <h2>Rule Editor</h2>
+        </div>
+        <p>Create rules based on object counts and posture detection. Configure actions (alert, record, both) per zone.</p>
+      </a>
+
+      <a href="event_viewer.html" class="card">
+        <div>
+          <span class="card-icon">📋</span>
+          <h2>Event Viewer</h2>
+        </div>
+        <p>Review triggered events and associated video clips. Export or delete events and manage your event history.</p>
+      </a>
+
+      <a href="onboarding.html" class="card">
+        <div>
+          <span class="card-icon">🚀</span>
+          <h2>Setup Wizard</h2>
+        </div>
+        <p>First-time setup: verify device health, test camera position, and create your first zone interactively.</p>
+      </a>
+    </div>
+
+    <div class="info-box">
+      <strong>💡 Quick Start:</strong><br>
+      1. Use <strong>Setup Wizard</strong> to verify your device and camera are working correctly.<br>
+      2. Use <strong>Zone Editor</strong> to draw detection areas on your camera feed.<br>
+      3. Use <strong>Rule Editor</strong> to define what should trigger alerts or recordings.<br>
+      4. Use <strong>Event Viewer</strong> to review events and clips as they occur.
+    </div>
+  </div>
+
+  <script>
+    async function updateHealth() {
+      const statusEl = document.getElementById('health-status');
+      statusEl.textContent = 'Checking...';
+      statusEl.className = 'status checking';
+
+      try {
+        const res = await fetch('/api/health', { cache: 'no-store' });
+        if (!res.ok) throw new Error('Health check failed');
+
+        const data = await res.json();
+        statusEl.className = 'status';
+        statusEl.textContent = `✓ Online | Status: ${data.status} | FPS: ${Number(data.fps || 0).toFixed(1)} | Uptime: ${Math.floor(Number(data.uptime || 0))}s`;
+      } catch (_err) {
+        statusEl.className = 'status error';
+        statusEl.textContent = '✗ Offline - Start the system to enable live features';
+      }
+    }
+
+    // Check health on load and every 30 seconds
+    updateHealth();
+    setInterval(updateHealth, 30000);
+  </script>
+</body>
+</html>

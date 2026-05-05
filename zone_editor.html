@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Zone Editor</title>
+<style>
+  body { font-family: Arial; text-align:center; background:#111; color:#eee; }
+  canvas { border:1px solid #0f0; cursor: crosshair; background:#000; }
+  #zones { margin-top:10px; text-align:left; display:inline-block; }
+  .zone-item { padding: 5px; margin: 2px 0; cursor: pointer; }
+  .zone-item.selected { background: #333; border-left: 3px solid #0ff; }
+  #instructions { margin: 10px 0; color: #888; font-size: 12px; }
+</style>
+</head>
+<body>
+<h2>Zone Editor</h2>
+<div id="instructions">
+  Draw: Click to place points, double-click to finish | Select: Shift+Drag | Undo: Right-click | Exit mode: Esc
+</div>
+<canvas id="canvas" width="640" height="480"></canvas>
+<div>
+  <input type="text" id="zoneName" placeholder="Zone name">
+  <button id="saveZone">Add Zone</button>
+  <button id="clearCurrent">Clear Current</button>
+  <button id="upload">Save All</button>
+  <button id="deleteSelected">Delete Selected</button>
+</div>
+<div id="zones"></div>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+let current = [];
+let zones = [];
+let selectedZones = new Set();
+
+let mousePos = null;
+let isDrawingZone = false;
+
+let isSelecting = false;
+let selectionStart = null;
+let selectionEnd = null;
+
+document.addEventListener("keydown", (e)=>{
+  if(e.key === "Escape") {
+    mousePos = null;
+    isDrawingZone = false;
+    draw();
+  }
+});
+
+canvas.addEventListener("mousemove", (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  if(isSelecting) {
+    selectionEnd = {x, y};
+    draw();
+  } else if(current.length > 0 && !isSelecting && isDrawingZone) {
+    mousePos = {x, y};
+    draw();
+  }
+});
+
+canvas.addEventListener("click", (e)=>{
+  if(isSelecting) return;
+  
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  current.push([x, y]);
+  isDrawingZone = true;
+  draw();
+});
+
+canvas.addEventListener("dblclick", (e)=>{
+  if(isSelecting) return;
+  
+  e.preventDefault();
+  
+  if(current.length > 1) {
+    current.pop();
+  }
+  
+  if(current.length >= 3) {
+    mousePos = null;
+    isDrawingZone = false;
+    draw();
+  } else {
+    alert("Need at least 3 points to create a zone");
+    current = [];
+    mousePos = null;
+    isDrawingZone = false;
+    draw();
+  }
+});
+
+canvas.addEventListener("contextmenu", (e)=>{
+  e.preventDefault();
+  
+  if(current.length > 0 && !isSelecting) {
+    current.pop();
+    if(current.length === 0) {
+      isDrawingZone = false;
+      mousePos = null;
+    }
+    draw();
+  }
+});
+
+canvas.addEventListener("mousedown", (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  if(e.shiftKey) {
+    isSelecting = true;
+    selectionStart = {x, y};
+    selectionEnd = {x, y};
+    canvas.style.cursor = "crosshair";
+  }
+});
+
+canvas.addEventListener("mouseup", (e)=>{
+  if(!isSelecting) return;
+  
+  isSelecting = false;
+  canvas.style.cursor = "crosshair";
+  
+  const minX = Math.min(selectionStart.x, selectionEnd.x);
+  const maxX = Math.max(selectionStart.x, selectionEnd.x);
+  const minY = Math.min(selectionStart.y, selectionEnd.y);
+  const maxY = Math.max(selectionStart.y, selectionEnd.y);
+  
+  if(!e.ctrlKey && !e.metaKey) {
+    selectedZones.clear();
+  }
+  
+  zones.forEach((z, idx) => {
+    const hasPointInside = z.points.some(([x, y]) => 
+      x >= minX && x <= maxX && y >= minY && y <= maxY
+    );
+    
+    if(hasPointInside) {
+      selectedZones.add(idx);
+    }
+  });
+  
+  selectionStart = null;
+  selectionEnd = null;
+  renderZones();
+  draw();
+});
+
+canvas.addEventListener("mouseleave", ()=>{
+  if(isSelecting) {
+    isSelecting = false;
+    selectionStart = null;
+    selectionEnd = null;
+    draw();
+  }
+  mousePos = null;
+  draw();
+});
+
+function draw(){
+  ctx.clearRect(0,0,640,480);
+  
+  if(current.length > 0) {
+    ctx.strokeStyle = "#0f0";
+    ctx.lineWidth = 2;
+    ctx.fillStyle = "rgba(0, 255, 0, 0.1)";
+    
+    ctx.beginPath();
+    current.forEach(([x,y],i)=>{
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    
+    if(mousePos && !isSelecting && isDrawingZone) {
+      ctx.lineTo(mousePos.x, mousePos.y);
+    }
+    
+    if(current.length >= 3 && !isDrawingZone) {
+      ctx.closePath();
+      ctx.fill();
+    }
+    
+    ctx.stroke();
+    
+    ctx.fillStyle = "#0f0";
+    current.forEach(([x,y])=>{
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  zones.forEach((z, idx)=>{
+    const isSelected = selectedZones.has(idx);
+    ctx.strokeStyle = isSelected ? "#0ff" : "#ff0";
+    ctx.lineWidth = isSelected ? 3 : 2;
+    ctx.fillStyle = isSelected ? "rgba(0, 255, 255, 0.1)" : "rgba(255, 255, 0, 0.05)";
+    
+    ctx.beginPath();
+    z.points.forEach(([x,y],i)=>{
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    
+    if(z.points.length > 0) {
+      ctx.fillStyle = isSelected ? "#0ff" : "#ff0";
+      ctx.font = "12px Arial";
+      ctx.fillText(z.name, z.points[0][0] + 5, z.points[0][1] - 5);
+    }
+  });
+  
+  if(isSelecting && selectionStart && selectionEnd) {
+    const x = Math.min(selectionStart.x, selectionEnd.x);
+    const y = Math.min(selectionStart.y, selectionEnd.y);
+    const w = Math.abs(selectionEnd.x - selectionStart.x);
+    const h = Math.abs(selectionEnd.y - selectionStart.y);
+    
+    ctx.strokeStyle = "#0ff";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    ctx.strokeRect(x, y, w, h);
+    
+    ctx.fillStyle = "rgba(0, 255, 255, 0.15)";
+    ctx.fillRect(x, y, w, h);
+    
+    ctx.setLineDash([]);
+  }
+}
+
+document.getElementById("saveZone").onclick = ()=>{
+  const name = document.getElementById("zoneName").value.trim();
+  if(!name || current.length<3) return alert("Need name & 3+ points");
+  zones.push({name, points: current});
+  current=[];
+  mousePos = null;
+  isDrawingZone = false;
+  document.getElementById("zoneName").value = "";
+  renderZones(); draw();
+};
+
+document.getElementById("clearCurrent").onclick = ()=>{
+  current = [];
+  mousePos = null;
+  isDrawingZone = false;
+  draw();
+};
+
+function renderZones(){
+  const html = zones.map((z, idx)=>{
+    const selected = selectedZones.has(idx) ? 'selected' : '';
+    return `<div class="zone-item ${selected}" onclick="toggleZone(${idx})">${z.name}</div>`;
+  }).join("");
+  document.getElementById("zones").innerHTML = html;
+}
+
+function toggleZone(idx) {
+  if(selectedZones.has(idx)) {
+    selectedZones.delete(idx);
+  } else {
+    selectedZones.add(idx);
+  }
+  renderZones();
+  draw();
+}
+
+document.getElementById("deleteSelected").onclick = ()=>{
+  if(selectedZones.size === 0) return alert("No zones selected");
+  
+  if(!confirm(`Delete ${selectedZones.size} zone(s)?`)) return;
+  
+  const toDelete = Array.from(selectedZones).sort((a, b) => b - a);
+  toDelete.forEach(idx => zones.splice(idx, 1));
+  
+  selectedZones.clear();
+  renderZones();
+  draw();
+};
+
+document.getElementById("upload").onclick = async ()=>{
+  const res = await fetch("/api/zones",{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(zones)
+  });
+  const msg = await res.json();
+  alert(`Saved ${msg.count} zones!`);
+};
+
+(async ()=>{
+  try {
+    const res = await fetch("/api/zones");
+    zones = await res.json();
+    renderZones();
+    draw();
+  } catch(e) {
+    console.log("No existing zones");
+  }
+})();
+</script>
+</body>
+</html>
